@@ -1,0 +1,41 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { createInitialState } from "../../../features/nomikai/characters";
+import { POST } from "./route";
+
+// 実APIの入口で入力不備と終了を確認し、AIへ到達する前に拒否できることを守る。
+function request(body: string) {
+  return new Request("http://localhost/api/nomikai", { method: "POST", body, headers: { "Content-Type": "application/json" } });
+}
+test("壊れたJSON、不正な状態、大きすぎる本文を拒否する", async () => {
+  assert.equal((await POST(request("{"))).status, 400);
+  assert.equal((await POST(request("{}"))).status, 400);
+  assert.equal((await POST(request(" ".repeat(16_001)))).status, 413);
+});
+test("終了後のターン要求を409で拒否する", async () => {
+  assert.equal((await POST(request(JSON.stringify({ state: { ...createInitialState(), turn: 20 }, recentSpeeches: [] })))).status, 409);
+});
+
+test("POSTから状態更新とAI未設定時の定型文を取得できる", async (t) => {
+  // 実際のHTTP処理と進行処理をつなぎ、異常系だけでなく正常系の契約も守る。
+  const original = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  t.after(() => {
+    if (original === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = original;
+  });
+  const random = t.mock.method(Math, "random", () => 0);
+  const first = await POST(request(JSON.stringify({ state: createInitialState(), recentSpeeches: [] })));
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get("Cache-Control"), "no-store");
+  const result = await first.json();
+  assert.equal(result.state.turn, 1);
+  assert.equal(result.state.participants.youkya.drunkenness, 10);
+  random.mock.mockImplementation(() => 0.8);
+  const second = await POST(request(JSON.stringify({ state: result.state, recentSpeeches: [] })));
+  assert.equal(second.status, 200);
+  const next = await second.json();
+  assert.equal(next.state.turn, 2);
+  assert.equal(next.events[1].characterId, "inkya");
+  assert.equal(next.events[1].source, "fallback");
+});
