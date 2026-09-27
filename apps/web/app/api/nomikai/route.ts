@@ -1,116 +1,31 @@
-import OpenAI from "openai";
+import { advanceTurn } from "@/features/nomikai/server/advance-turn";
+import { generateDialogue } from "@/features/nomikai/server/generate-dialogue";
+import { MAX_TURNS } from "@/features/nomikai/types";
+import { isTurnRequest } from "@/features/nomikai/validation";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+export const runtime = "nodejs";
 
-type NomikaiMessage = {
-  name: string;
-  text: string;
-};
-
-type NomikaiResponse = {
-  messages: NomikaiMessage[];
-};
-
-const nomikaiResponseSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    messages: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          name: { type: "string" },
-          text: { type: "string" },
-        },
-        required: ["name", "text"],
-      },
-    },
-  },
-  required: ["messages"],
-} as const;
-
-function isNomikaiResponse(value: unknown): value is NomikaiResponse {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("messages" in value) ||
-    !Array.isArray(value.messages)
-  ) {
-    return false;
-  }
-
-  return value.messages.every(
-    (message) =>
-      typeof message === "object" &&
-      message !== null &&
-      "name" in message &&
-      "text" in message &&
-      typeof message.name === "string" &&
-      typeof message.text === "string"
-  );
-}
-
-export async function GET() {
-  if (!process.env.OPENAI_API_KEY) {
-    return Response.json(
-      { error: "OPENAI_API_KEY が設定されていません" },
-      { status: 500 }
-    );
-  }
-
-  const prompt = `
-説明文や前置きは不要です。JSONのみ返してください。
-
-3人の飲み会をシミュレーションしてください。
-
-登場人物:
-- 陽キャ
-- 陰キャ
-- 説教おじさん
-
-条件:
-- 5ターンの会話にする
-- 少しカオスで笑える感じ
-- 必ずJSONだけを返す
-- 形式は {"messages":[{"name":"名前","text":"セリフ"}]} にする
-`;
-
+export async function POST(request: Request) {
+  let input: unknown;
   try {
-    const response = await client.responses.parse({
-      model: "gpt-4.1-mini",
-      input: prompt,
-      text: {
-        format: {
-          type: "json_schema",
-          name: "nomikai_messages",
-          strict: true,
-          schema: nomikaiResponseSchema,
-        },
-      },
-    });
-
-    const parsed = response.output_parsed;
-
-    if (!isNomikaiResponse(parsed)) {
-      return Response.json(
-        {
-          error: "JSONの形式が不正でした",
-          raw: response.output_text,
-        },
-        { status: 500 }
-      );
-    }
-
-    return Response.json(parsed);
-  } catch (error) {
-    console.error(error);
-    return Response.json(
-      { error: "OpenAI API の呼び出しに失敗しました" },
-      { status: 500 }
-    );
+    // 小さな状態と直近の会話だけを扱い、無制限の本文を生成処理へ渡さない。
+    const body = await request.text();
+    if (body.length > 16_000) return Response.json({ error: "入力が大きすぎます" }, { status: 413 });
+    input = JSON.parse(body);
+  } catch {
+    return Response.json({ error: "JSONの形式が不正です" }, { status: 400 });
+  }
+  if (!isTurnRequest(input)) {
+    return Response.json({ error: "参加者の状態または会話の形式が不正です" }, { status: 400 });
+  }
+  if (input.state.turn >= MAX_TURNS) {
+    return Response.json({ error: "飲み会は終了しています。再開催してください" }, { status: 409 });
+  }
+  try {
+    // APIは入出力を担当し、状態計算とセリフ生成をそれぞれの責務へ委ねる。
+    const result = await advanceTurn(input, { random: Math.random, generateDialogue });
+    return Response.json(result, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return Response.json({ error: "ターンを進められませんでした。もう一度お試しください" }, { status: 500 });
   }
 }
