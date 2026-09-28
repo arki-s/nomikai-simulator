@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test": "tsx --test features/nomikai/*.test.ts features/nomikai/server/*.test.ts app/api/nomikai/*.test.ts",
