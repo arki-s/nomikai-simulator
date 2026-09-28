@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CHARACTERS } from "../characters";
+import { VENUES } from "../venues";
 import { generateDialogue, parseDialogue } from "./generate-dialogue";
 
 // セリフ以外の出力を拒否し、AIを状態更新の入口にしない。
@@ -14,7 +15,7 @@ test("キーなしでは外部通信せず、進行側に失敗を返す", async
   const original = process.env.OPENAI_API_KEY;
   delete process.env.OPENAI_API_KEY;
   try {
-    await assert.rejects(generateDialogue({ character: CHARACTERS[0], state: { drunkenness: 0, fullness: 0 }, recentSpeeches: [] }), /未設定/);
+    await assert.rejects(generateDialogue({ character: CHARACTERS[0], participants: CHARACTERS.slice(0, 2), venue: VENUES[1], state: { drunkenness: 0, fullness: 0 }, recentSpeeches: [] }), /未設定/);
   } finally {
     if (original === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = original;
@@ -29,7 +30,7 @@ test("SDKでセリフだけを解析し、拒否・未完了・HTTP障害は失�
     if (original === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = original;
   });
-  const input = { character: CHARACTERS[0], state: { drunkenness: 10, fullness: 15 }, recentSpeeches: [] };
+  const input = { character: CHARACTERS[0], participants: CHARACTERS.slice(0, 2), venue: VENUES[1], state: { drunkenness: 10, fullness: 15 }, recentSpeeches: [] };
   let body: Record<string, unknown> = {};
   let status = 200;
   let payload: unknown = {
@@ -45,7 +46,10 @@ test("SDKでセリフだけを解析し、拒否・未完了・HTTP障害は失�
   assert.equal(body.model, "gpt-4.1-mini");
   assert.equal(body.store, false);
   assert.deepEqual(JSON.parse(String(body.input)).state, input.state);
-  assert.equal(JSON.parse(String(body.input)).speaker, "陽キャ");
+  // 表示名の変更ではなく、指定された人物がAIへ渡る契約を検証する。
+  assert.equal(JSON.parse(String(body.input)).speaker, input.character.name);
+  assert.deepEqual(JSON.parse(String(body.input)).participants, input.participants.map(({ name }) => name));
+  assert.equal(JSON.parse(String(body.input)).venue.name, VENUES[1].name);
   const format = (body.text as { format: { schema: { properties: unknown } } }).format;
   assert.deepEqual(format.schema.properties, { text: { type: "string" } });
 

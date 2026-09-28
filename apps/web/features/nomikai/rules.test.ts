@@ -1,46 +1,50 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createInitialState } from "./characters";
-import { actionWeights, applyAction, selectAction } from "./rules";
+import { CHARACTERS } from "./characters";
+import { VENUES } from "./venues";
+import { actionReason, actionWeights, applyAction, selectAction, selectMenuItem } from "./rules";
 
-// AIを介さず境界値と抽選を検証し、ルール変更による状態の破綻を防ぐ。
-test("初期状態は固定3人で、再開催ごとに独立する", () => {
-  const first = createInitialState();
-  first.participants.youkya.drunkenness = 90;
-  const second = createInitialState();
-  assert.deepEqual(Object.keys(second.participants), ["youkya", "inkya", "preacher"]);
-  assert.equal(second.turn, 0);
-  for (const state of Object.values(second.participants)) assert.deepEqual(state, { drunkenness: 0, fullness: 0 });
+const character = CHARACTERS[0];
+const venue = VENUES[0];
+const context = { character, venue, state: { drunkenness: 0, fullness: 30 } };
+
+test("4行動の効果と丸めた差を返し、入力を変更しない", () => {
+  const state = Object.freeze({ drunkenness: 97, fullness: 98 });
+  assert.deepEqual(applyAction(state, "drink", character, venue.menu[0]), { nextState: { drunkenness: 100, fullness: 98 }, delta: { drunkenness: 3, fullness: 0 } });
+  assert.equal(applyAction(state, "eat", character, venue.menu[2]).delta.fullness, 2);
+  assert.deepEqual(applyAction(state, "talk", character).nextState, state);
+  assert.deepEqual(applyAction({ drunkenness: 2, fullness: 0 }, "rest", character), { nextState: { drunkenness: 0, fullness: 0 }, delta: { drunkenness: -2, fullness: 0 } });
+  assert.throws(() => applyAction(state, "drink", character, venue.menu[2]));
+  assert.throws(() => applyAction(state, "eat", character));
 });
-test("4行動の効果が決まり、元の状態は変更されない", () => {
-  const before = Object.freeze({ drunkenness: 30, fullness: 40 });
-  assert.deepEqual(applyAction(before, "drink").nextState, { drunkenness: 40, fullness: 40 });
-  assert.deepEqual(applyAction(before, "eat").nextState, { drunkenness: 30, fullness: 55 });
-  assert.deepEqual(applyAction(before, "talk").nextState, before);
-  assert.deepEqual(applyAction(before, "rest").nextState, { drunkenness: 25, fullness: 35 });
+test("人物・店舗・メニューの違いを固定乱数で再現できる", () => {
+  assert.equal(selectAction(context, () => 0.3), "drink");
+  assert.equal(selectAction({ ...context, venue: VENUES[2] }, () => 0.3), "eat");
+  assert.equal(actionWeights(context).talk, 5);
+  assert.equal(actionWeights({ ...context, character: CHARACTERS[1] }).talk, 2);
+  assert.equal(applyAction(context.state, "drink", CHARACTERS[1], venue.menu[0]).delta.drunkenness, 12);
+  assert.equal(applyAction(context.state, "drink", CHARACTERS[2], venue.menu[1]).delta.drunkenness, 12);
+  assert.equal(applyAction(context.state, "drink", { ...character, alcoholMultiplier: 1.25 }, venue.menu[1]).delta.drunkenness, 19);
+  assert.equal(selectMenuItem(venue, "eat", () => 0).id, "edamame");
+  assert.equal(selectMenuItem(venue, "eat", () => 0.999).id, "karaage");
+  assert.match(actionReason(context, "drink", venue.menu[0]), /ビールの酔い効果10/);
 });
-test("上下限で丸め、実際の増減を返す", () => {
-  assert.deepEqual(applyAction({ drunkenness: 97, fullness: 98 }, "drink"), {
-    nextState: { drunkenness: 100, fullness: 98 }, delta: { drunkenness: 3, fullness: 0 },
-  });
-  assert.equal(applyAction({ drunkenness: 0, fullness: 98 }, "eat").delta.fullness, 2);
-  assert.deepEqual(applyAction({ drunkenness: 2, fullness: 0 }, "rest"), {
-    nextState: { drunkenness: 0, fullness: 0 }, delta: { drunkenness: -2, fullness: 0 },
-  });
-});
-test("重み付き抽選の境界を固定乱数で確認する", () => {
-  const state = { drunkenness: 0, fullness: 30 };
-  for (const [random, action] of [[0, "drink"], [0.299, "drink"], [0.3, "eat"], [0.6, "talk"], [0.9, "rest"], [0.9999, "rest"]] as const) {
-    assert.equal(selectAction(state, () => random), action);
+test("抽選境界・空腹・不正乱数を検証する", () => {
+  // 補正なしの条件を用い、従来の3・3・3・1の境界も維持していることを確認する。
+  const neutral = { ...context, character: { ...character, actionBias: {} }, venue: { ...venue, actionBias: {} } };
+  for (const [value, action] of [[0, "drink"], [0.299, "drink"], [0.3, "eat"], [0.6, "talk"], [0.9, "rest"], [0.9999, "rest"]] as const) assert.equal(selectAction(neutral, () => value), action);
+  assert.equal(actionWeights({ ...neutral, state: { drunkenness: 79, fullness: 29 } }).eat, 6);
+  for (const value of [-1, 1, NaN, Infinity]) {
+    assert.throws(() => selectAction(context, () => value));
+    assert.throws(() => selectMenuItem(venue, "drink", () => value));
   }
-  assert.equal(actionWeights({ drunkenness: 79, fullness: 29 }).eat, 6);
-  assert.equal(actionWeights(state).eat, 3);
-  for (const random of [-1, 1, NaN, Infinity]) assert.throws(() => selectAction(state, () => random));
 });
-test("高い酔いでは飲まず、満腹では食べず、常に候補が残る", () => {
-  const state = { drunkenness: 80, fullness: 100 };
-  assert.deepEqual(actionWeights(state), { drink: 0, eat: 0, talk: 3, rest: 6 });
-  for (let i = 0; i < 100; i++) assert.ok(["talk", "rest"].includes(selectAction(state, () => i / 100)));
-  assert.equal(actionWeights({ drunkenness: 79, fullness: 99 }).drink, 3);
-  assert.equal(actionWeights({ drunkenness: 79, fullness: 99 }).eat, 3);
+test("強い補正でも禁止行動は復活せず、休む候補が残る", () => {
+  const restricted = { ...context, state: { drunkenness: 80, fullness: 100 }, character: { ...character, actionBias: { drink: 100, eat: 100, rest: -100 } } };
+  assert.equal(actionWeights(restricted).drink, 0);
+  assert.equal(actionWeights(restricted).eat, 0);
+  assert.ok(actionWeights(restricted).rest >= 1);
+  for (let i = 0; i < 100; i++) assert.ok(["talk", "rest"].includes(selectAction(restricted, () => i / 100)));
+  assert.equal(actionWeights({ ...context, venue: { ...venue, menu: [] } }).drink, 0);
+  assert.throws(() => selectMenuItem({ ...venue, menu: [] }, "drink", () => 0));
 });

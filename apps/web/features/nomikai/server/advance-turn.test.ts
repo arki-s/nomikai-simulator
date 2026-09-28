@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CHARACTERS, createInitialState } from "../characters";
+import { CHARACTERS } from "../characters";
+import { createInitialState } from "../simulation";
 import { MAX_TURNS } from "../types";
 import type { DialogueGenerator, TurnRequest } from "../types";
 import { isTurnResponse } from "../validation";
@@ -35,10 +36,15 @@ test("発言時だけ生成し、生成器が入力を変更しても状態・�
       assert.equal(input.character.id, "youkya");
       input.state.drunkenness = 100;
       input.character.id = "preacher";
+      input.character.actionBias.talk = 999;
+      input.participants.length = 0;
+      input.venue.name = "書き換え";
       return { text: "こんにちは！" };
     },
   });
   assert.equal(calls, 1);
+  assert.equal(CHARACTERS[0].actionBias.talk, 2);
+  assert.equal(result.state.aiAttempts, 1);
   assert.deepEqual(request, original);
   assert.deepEqual(result.state.participants, original.state.participants);
   assert.deepEqual(result.events[1], { type: "speech", turn: 1, characterId: "youkya", text: "こんにちは！", source: "ai" });
@@ -48,7 +54,7 @@ test("AI失敗・空文・長すぎる発言でも定型文で進む", async () 
     const result = await advanceTurn({ state: createInitialState(), recentSpeeches: [] }, { random: () => 0.8, generateDialogue });
     assert.equal(result.state.turn, 1);
     assert.equal(result.events[1].type, "speech");
-    assert.deepEqual(result.events[1], { type: "speech", turn: 1, characterId: "youkya", text: CHARACTERS[0].fallbackText, source: "fallback" });
+    assert.deepEqual(result.events[1], { type: "speech", turn: 1, characterId: "youkya", text: CHARACTERS[0].fallbackText, source: "fallback", fallbackReason: "unavailable" });
   }
 });
 test("AIなしで20ターン完走し、人物の順番と終了条件を守る", async () => {
@@ -60,4 +66,49 @@ test("AIなしで20ターン完走し、人物の順番と終了条件を守る"
     state = result.state;
   }
   await assert.rejects(advanceTurn({ state, recentSpeeches: [] }, { random: () => 0, generateDialogue: unavailable }));
+});
+
+test("成功・失敗とも8回まで試行し、上限後は生成器を呼ばない", async () => {
+  for (const fail of [false, true]) {
+    let calls = 0;
+    let state = createInitialState();
+    state.turn = 7; state.aiAttempts = 7;
+    const generateDialogue: DialogueGenerator = async () => { calls++; if (fail) throw new Error("失敗"); return { text: "最後の生成" }; };
+    const eighth = await advanceTurn({ state, recentSpeeches: [] }, { random: () => 0.8, generateDialogue });
+    assert.equal(eighth.state.aiAttempts, 8);
+    assert.ok(isTurnResponse(eighth, state));
+    state = eighth.state;
+    const ninth = await advanceTurn({ state, recentSpeeches: [] }, { random: () => 0.8, generateDialogue });
+    assert.equal(calls, 1);
+    assert.equal(ninth.state.aiAttempts, 8);
+    assert.ok(isTurnResponse(ninth, state));
+    assert.equal(ninth.events[1].type === "speech" && ninth.events[1].fallbackReason, "budget_exhausted");
+  }
+});
+
+// 全組合せを固定乱数列で進め、AIを使わず履歴込みのAPI契約を確認する。
+test("参加者4組合せ×3店舗で20ターン完走し、毎回1人だけが行動する", async () => {
+  const { VENUES } = await import("../venues");
+  const { isTurnRequest } = await import("../validation");
+  const groups = [["youkya", "inkya"], ["youkya", "preacher"], ["inkya", "preacher"], ["youkya", "inkya", "preacher"]] as const;
+  for (const participantIds of groups) for (const venue of VENUES) {
+    let state = createInitialState({ participantIds: [...participantIds], venueId: venue.id });
+    let recentSpeeches: TurnRequest["recentSpeeches"] = [];
+    let calls = 0;
+    for (let turn = 0; turn < MAX_TURNS; turn++) {
+      const request = { state, recentSpeeches };
+      assert.ok(isTurnRequest(request));
+      const original = structuredClone(request);
+      const result = await advanceTurn(request, { random: () => [0, 0.4, 0.8, 0.99][turn % 4], generateDialogue: async () => { calls++; throw new Error("offline"); } });
+      assert.equal(result.events[0].characterId, participantIds[turn % participantIds.length]);
+      assert.ok(isTurnResponse(result, state));
+      assert.deepEqual(request, original);
+      for (const event of result.events) if (event.type === "speech") recentSpeeches = [...recentSpeeches, event].slice(-6);
+      state = result.state;
+    }
+    assert.equal(state.turn, 20);
+    assert.equal(state.aiAttempts, calls);
+    assert.ok(calls <= 8);
+    assert.deepEqual(Object.keys(state.participants), [...participantIds]);
+  }
 });

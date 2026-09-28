@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createInitialState } from "../../../features/nomikai/characters";
+import { createInitialState } from "../../../features/nomikai/simulation";
 import { POST } from "./route";
 
 // 実APIの入口で入力不備と終了を確認し、AIへ到達する前に拒否できることを守る。
@@ -38,4 +38,28 @@ test("POSTから状態更新とAI未設定時の定型文を取得できる", as
   assert.equal(next.state.turn, 2);
   assert.equal(next.events[1].characterId, "inkya");
   assert.equal(next.events[1].source, "fallback");
+});
+
+test("2人開催と店舗メニューを受け付け、不正設定は400、AI上限後も200で継続する", async (t) => {
+  const random = t.mock.method(Math, "random", () => 0);
+  const state = createInitialState({ participantIds: ["inkya", "preacher"], venueId: "washoku" });
+  const first = await POST(request(JSON.stringify({ state, recentSpeeches: [] })));
+  assert.equal(first.status, 200);
+  const result = await first.json();
+  assert.deepEqual(Object.keys(result.state.participants), ["inkya", "preacher"]);
+  assert.equal(result.events[0].menuItemId, "sake");
+  assert.equal(result.state.participants.inkya.drunkenness, 24);
+  for (const config of [{ ...state.config, venueId: "unknown" }, { ...state.config, participantIds: ["inkya", "inkya"] }]) {
+    assert.equal((await POST(request(JSON.stringify({ state: { ...state, config }, recentSpeeches: [] })))).status, 400);
+  }
+  // 上限時はキーの有無によらず外部通信してはならない。
+  const fetchMock = t.mock.method(globalThis, "fetch", async () => { throw new Error("外部通信禁止"); });
+  random.mock.mockImplementation(() => 0.8);
+  state.turn = 8; state.aiAttempts = 8;
+  const capped = await POST(request(JSON.stringify({ state, recentSpeeches: [] })));
+  assert.equal(capped.status, 200);
+  const data = await capped.json();
+  assert.equal(data.state.aiAttempts, 8);
+  assert.equal(data.events[1].fallbackReason, "budget_exhausted");
+  assert.equal(fetchMock.mock.callCount(), 0);
 });
