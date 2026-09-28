@@ -1,31 +1,31 @@
-import type { ActionType, ParticipantState } from "./types";
+import type { ActionType, Character, MenuItem, ParticipantState, Venue } from "./types";
 
 export const ACTION_LABELS: Record<ActionType, string> = {
   drink: "飲む", eat: "食べる", talk: "話す", rest: "休む",
 };
-const EFFECTS: Record<ActionType, ParticipantState> = {
-  drink: { drunkenness: 10, fullness: 0 },
-  eat: { drunkenness: 0, fullness: 15 },
-  talk: { drunkenness: 0, fullness: 0 },
-  rest: { drunkenness: -5, fullness: -5 },
-};
+export type RuleContext = { state: ParticipantState; character: Character; venue: Venue };
 
-export function actionWeights(state: ParticipantState): Record<ActionType, number> {
-  // 状態に応じて候補を制限し、AIの文章とは独立して行動を決める。
-  return {
-    drink: state.drunkenness >= 80 ? 0 : 3,
-    eat: state.fullness === 100 ? 0 : state.fullness < 30 ? 6 : 3,
-    talk: 3,
-    rest: state.drunkenness >= 80 ? 6 : 1,
-  };
+export function actionWeights({ state, character, venue }: RuleContext): Record<ActionType, number> {
+  const weights: Record<ActionType, number> = { drink: 3, eat: state.fullness < 30 ? 6 : 3, talk: 3, rest: state.drunkenness >= 80 ? 6 : 1 };
+  for (const action of Object.keys(weights) as ActionType[]) {
+    weights[action] = Math.max(0, weights[action] + (character.actionBias[action] ?? 0) + (venue.actionBias[action] ?? 0));
+  }
+  // 補正後に禁止条件を適用し、性格や店舗の加点で禁止行動が復活するのを防ぐ。
+  if (state.drunkenness >= 80 || !venue.menu.some((item) => item.kind === "drink")) weights.drink = 0;
+  if (state.fullness === 100 || !venue.menu.some((item) => item.kind === "eat")) weights.eat = 0;
+  weights.rest = Math.max(1, weights.rest);
+  return weights;
 }
 
-export function selectAction(state: ParticipantState, random: () => number): ActionType {
-  // 抽選を再現して検証できるよう、乱数を外から渡す。
+function sample(random: () => number) {
   const value = random();
   if (!Number.isFinite(value) || value < 0 || value >= 1) throw new Error("乱数は0以上1未満である必要があります");
-  const weights = actionWeights(state);
-  let position = value * Object.values(weights).reduce((sum, weight) => sum + weight, 0);
+  return value;
+}
+
+export function selectAction(context: RuleContext, random: () => number): ActionType {
+  const weights = actionWeights(context);
+  let position = sample(random) * Object.values(weights).reduce((sum, weight) => sum + weight, 0);
   for (const action of Object.keys(weights) as ActionType[]) {
     if (position < weights[action]) return action;
     position -= weights[action];
@@ -33,26 +33,31 @@ export function selectAction(state: ParticipantState, random: () => number): Act
   return "rest";
 }
 
-export function applyAction(state: ParticipantState, action: ActionType) {
-  const clamp = (value: number) => Math.max(0, Math.min(100, value));
-  const nextState = {
-    drunkenness: clamp(state.drunkenness + EFFECTS[action].drunkenness),
-    fullness: clamp(state.fullness + EFFECTS[action].fullness),
-  };
-  return {
-    nextState,
-    // 丸めた後の実際の差を記録し、イベントとメーターを一致させる。
-    delta: {
-      drunkenness: nextState.drunkenness - state.drunkenness,
-      fullness: nextState.fullness - state.fullness,
-    },
-  };
+export function selectMenuItem(venue: Venue, action: "drink" | "eat", random: () => number): MenuItem {
+  const candidates = venue.menu.filter((item) => item.kind === action);
+  if (!candidates.length) throw new Error("対応するメニューがありません");
+  return candidates[Math.floor(sample(random) * candidates.length)];
 }
 
-export function actionReason(state: ParticipantState): string {
-  const reasons = ["行動の重みに応じて抽選"];
-  if (state.fullness < 30) reasons.push("空腹のため食事を選びやすい");
-  if (state.fullness === 100) reasons.push("満腹のため食事を除外");
-  if (state.drunkenness >= 80) reasons.push("酔いが強いため飲酒を除外し休憩を選びやすい");
+export function applyAction(state: ParticipantState, action: ActionType, character: Character, item?: MenuItem) {
+  if ((action === "drink" || action === "eat") && item?.kind !== action) throw new Error("行動とメニューが一致しません");
+  if ((action === "talk" || action === "rest") && item) throw new Error("この行動にメニューは不要です");
+  // 医学モデルではなくゲームの効果として整数化し、実際の差だけをイベントへ渡す。
+  const drunkenness = action === "drink" && item?.kind === "drink" ? Math.round(item.drunkenness * character.alcoholMultiplier) : action === "rest" ? -5 : 0;
+  const fullness = action === "eat" && item?.kind === "eat" ? item.fullness : action === "rest" ? -5 : 0;
+  const clamp = (value: number) => Math.max(0, Math.min(100, value));
+  const nextState = { drunkenness: clamp(state.drunkenness + drunkenness), fullness: clamp(state.fullness + fullness) };
+  return { nextState, delta: { drunkenness: nextState.drunkenness - state.drunkenness, fullness: nextState.fullness - state.fullness } };
+}
+
+export function actionReason(context: RuleContext, action: ActionType, item?: MenuItem): string {
+  const { state, character, venue } = context;
+  const weights = actionWeights(context);
+  const reasons = [`人物・店舗・状態で補正した重みから抽選（飲む${weights.drink}・食べる${weights.eat}・話す${weights.talk}・休む${weights.rest}）`, `${venue.name}：${venue.ruleLabel}`];
+  if (state.fullness < 30) reasons.push("空腹のため食べる基本重みを6に変更");
+  if (state.fullness === 100) reasons.push("満腹のため食べる候補を除外");
+  if (state.drunkenness >= 80) reasons.push("酔いが強いため飲む候補を除外し、休む基本重みを6に変更");
+  if (action === "drink" && item?.kind === "drink") reasons.push(`${item.name}の酔い効果${item.drunkenness} × 酔いやすさ${character.alcoholMultiplier}（四捨五入）`);
+  if (action === "eat" && item?.kind === "eat") reasons.push(`${item.name}の満腹効果${item.fullness}`);
   return reasons.join("。") + "。";
 }

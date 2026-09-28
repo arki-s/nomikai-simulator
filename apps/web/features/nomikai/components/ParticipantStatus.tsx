@@ -1,12 +1,15 @@
-import { CHARACTERS } from "../characters";
+import { getCharacter } from "../characters";
+import { participantState } from "../simulation";
 import type { CharacterId, SimulationState } from "../types";
 
 export function ParticipantStatus({ state, activeId }: { state: SimulationState; activeId?: CharacterId }) {
   // 数値と名前も併記し、色だけに頼らず状態と行動した人物を伝える。
   return (
-    <section aria-label="参加者の状態" className="grid gap-4 sm:grid-cols-3">
-      {CHARACTERS.map((character) => {
-        const participant = state.participants[character.id];
+    <section aria-label="参加者の状態" className={`grid gap-4 ${state.config.participantIds.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+      {// 選択した人物だけを描画し、未参加者の状態参照を避ける。
+      state.config.participantIds.map((id) => {
+        const character = getCharacter(id);
+        const participant = participantState(state, id);
         return (
           <article key={character.id} className={`rounded-2xl border p-5 ${activeId === character.id ? "border-amber-500 bg-amber-50 dark:bg-amber-950/30" : "border-stone-300 dark:border-stone-700"}`}>
             <h2 className="text-lg font-bold">{character.name}</h2>

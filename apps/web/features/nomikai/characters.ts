@@ -1,20 +1,14 @@
-import type { Character, SimulationState } from "./types";
+import type { Character, CharacterId } from "./types";
 
-// 固定人物を共有し、リクエストによる名前・口調の差し替えを防ぐ。
+// 人物差は固定データで管理し、AIやリクエストに行動特性を決めさせない。
 export const CHARACTERS: readonly Character[] = [
-  { id: "youkya", name: "明るい人", speakingStyle: "明るく気さく。場を盛り上げる短い口調。", fallbackText: "このメンバー、なんだかんだ楽しいじゃん！" },
-  { id: "inkya", name: "物静かな人", speakingStyle: "控えめで少し自虐的。小声のような短い口調。", fallbackText: "……こういう席、聞いているだけでも結構面白いですね。" },
-  { id: "preacher", name: "語りたがりな人", speakingStyle: "昔の経験を語りたがる、少し説教くさい口調。", fallbackText: "まあ聞きなさい。昔の飲み会というのはだな……。" },
+  { id: "youkya", name: "明るい人", speakingStyle: "明るく気さく。場を盛り上げる短い口調。", fallbackText: "このメンバー、なんだかんだ楽しいじゃん！", avatarSrc: "/nomikai/avatars/youkya.svg", alcoholMultiplier: 1, actionBias: { talk: 2 }, traitLabel: "酔いやすさ ×1.0・話す重み +2" },
+  { id: "inkya", name: "物静かな人", speakingStyle: "控えめで少し自虐的。小声のような短い口調。", fallbackText: "……こういう席、聞いているだけでも結構面白いですね。", avatarSrc: "/nomikai/avatars/inkya.svg", alcoholMultiplier: 1.2, actionBias: { talk: -1, rest: 1 }, traitLabel: "酔いやすさ ×1.2・話す重み −1・休む重み +1" },
+  { id: "preacher", name: "語りたがりな人", speakingStyle: "昔の経験を語りたがる、少し説教くさい口調。", fallbackText: "まあ聞きなさい。昔の飲み会というのはだな……。", avatarSrc: "/nomikai/avatars/preacher.svg", alcoholMultiplier: 0.8, actionBias: { talk: 3 }, traitLabel: "酔いやすさ ×0.8・話す重み +3" },
 ];
 
-export function createInitialState(): SimulationState {
-  // 再開催で前回の状態を引き継がないよう、毎回独立したオブジェクトを作る。
-  return {
-    turn: 0,
-    participants: {
-      youkya: { drunkenness: 0, fullness: 0 },
-      inkya: { drunkenness: 0, fullness: 0 },
-      preacher: { drunkenness: 0, fullness: 0 },
-    },
-  };
+export function getCharacter(id: CharacterId): Character {
+  const character = CHARACTERS.find((item) => item.id === id);
+  if (!character) throw new Error("不明な人物です");
+  return character;
 }

@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "JSONの形式が不正です" }, { status: 400 });
   }
   if (!isTurnRequest(input)) {
-    return Response.json({ error: "参加者の状態または会話の形式が不正です" }, { status: 400 });
+    return Response.json({ error: "開催設定・参加者の状態・AI試行回数・会話の形式が不正です" }, { status: 400 });
   }
   if (input.state.turn >= MAX_TURNS) {
     return Response.json({ error: "飲み会は終了しています。再開催してください" }, { status: 409 });
