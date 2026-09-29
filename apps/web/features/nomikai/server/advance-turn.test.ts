@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CHARACTERS } from "../characters";
-import { createInitialState } from "../simulation";
+import { runningState as createInitialState } from "../test-fixtures";
 import { MAX_TURNS } from "../types";
 import type { DialogueGenerator, TurnRequest } from "../types";
 import { isTurnResponse } from "../validation";
@@ -18,7 +18,7 @@ test("1ターンに1人だけ行動し、非発言ではAIを呼ばない", asyn
     assert.equal(calls, 0);
     assert.equal(result.state.turn, 1);
     assert.equal(result.events.length, 1);
-    assert.equal(result.events[0].characterId, "youkya");
+    assert.equal((result.events[0].type !== "opening" && result.events[0].characterId), "youkya");
     assert.deepEqual(result.state.participants.inkya, original.state.participants.inkya);
     assert.deepEqual(result.state.participants.preacher, original.state.participants.preacher);
     assert.deepEqual(request, original);
@@ -61,7 +61,7 @@ test("AIなしで20ターン完走し、人物の順番と終了条件を守る"
   let state = createInitialState();
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const result = await advanceTurn({ state, recentSpeeches: [] }, { random: () => 0.8, generateDialogue: unavailable });
-    assert.equal(result.events[0].characterId, CHARACTERS[turn % 3].id);
+    assert.equal((result.events[0].type !== "opening" && result.events[0].characterId), CHARACTERS[turn % CHARACTERS.length].id);
     assert.ok(isTurnResponse(result, state));
     state = result.state;
   }
@@ -100,7 +100,7 @@ test("参加者4組合せ×3店舗で20ターン完走し、毎回1人だけが�
       assert.ok(isTurnRequest(request));
       const original = structuredClone(request);
       const result = await advanceTurn(request, { random: () => [0, 0.4, 0.8, 0.99][turn % 4], generateDialogue: async () => { calls++; throw new Error("offline"); } });
-      assert.equal(result.events[0].characterId, participantIds[turn % participantIds.length]);
+      assert.equal((result.events[0].type !== "opening" && result.events[0].characterId), participantIds[turn % participantIds.length]);
       assert.ok(isTurnResponse(result, state));
       assert.deepEqual(request, original);
       for (const event of result.events) if (event.type === "speech") recentSpeeches = [...recentSpeeches, event].slice(-6);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createInitialState } from "./simulation";
+import { runningState as createInitialState } from "./test-fixtures";
 import { isTurnRequest, isTurnResponse } from "./validation";
 import { advanceTurn } from "./server/advance-turn";
 
@@ -37,7 +37,7 @@ test("応答のターン・話者・実際の増減・非行動者の変化を�
   assert.ok(isTurnResponse(response, state));
   const badTurn = structuredClone(response); badTurn.state.turn = 2;
   const badState = structuredClone(response); badState.state.participants.inkya!.fullness = 1;
-  const badEvent = structuredClone(response); badEvent.events[0].characterId = "inkya";
+  const badEvent = structuredClone(response); if (badEvent.events[0].type === "action") badEvent.events[0].characterId = "inkya";
   const badDelta = structuredClone(response); if (badDelta.events[0].type === "action") badDelta.events[0].delta.drunkenness = 99;
   for (const value of [null, {}, badTurn, badState, badEvent, badDelta]) assert.equal(isTurnResponse(value, state), false);
 });

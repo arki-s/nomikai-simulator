@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createInitialState } from "../../../features/nomikai/simulation";
+import { runningState as createInitialState } from "../../../features/nomikai/test-fixtures";
 import { POST } from "./route";
 
 // 実APIの入口で入力不備と終了を確認し、AIへ到達する前に拒否できることを守る。
@@ -47,8 +47,8 @@ test("2人開催と店舗メニューを受け付け、不正設定は400、AI�
   assert.equal(first.status, 200);
   const result = await first.json();
   assert.deepEqual(Object.keys(result.state.participants), ["inkya", "preacher"]);
-  assert.equal(result.events[0].menuItemId, "sake");
-  assert.equal(result.state.participants.inkya.drunkenness, 24);
+  assert.equal(result.events[0].menuItemId, "beer");
+  assert.equal(result.state.participants.inkya.drunkenness, 12);
   for (const config of [{ ...state.config, venueId: "unknown" }, { ...state.config, participantIds: ["inkya", "inkya"] }]) {
     assert.equal((await POST(request(JSON.stringify({ state: { ...state, config }, recentSpeeches: [] })))).status, 400);
   }
@@ -62,4 +62,22 @@ test("2人開催と店舗メニューを受け付け、不正設定は400、AI�
   assert.equal(data.state.aiAttempts, 8);
   assert.equal(data.events[1].fallbackReason, "budget_exhausted");
   assert.equal(fetchMock.mock.callCount(), 0);
+});
+
+// 開始演出も既存POSTの契約で進み、通常ターンやAIの上限を消費しない。
+test("POSTで質問から全員乾杯まで進め、通常ターン0とAI試行0を維持する", async () => {
+  const { createInitialState: initialState } = await import("../../../features/nomikai/simulation");
+  let state = initialState({ participantIds: ["youkya", "sweet_tooth"], venueId: "bar" });
+  const stages: string[] = [];
+  for (let step = 1; step <= 6; step++) {
+    const response = await POST(request(JSON.stringify({ state, recentSpeeches: [] })));
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.state.openingStep, step);
+    assert.equal(result.state.turn, 0);
+    assert.equal(result.state.aiAttempts, 0);
+    stages.push(result.events[0].stage);
+    state = result.state;
+  }
+  assert.deepEqual(stages, ["ask", "order", "order", "wait", "serve", "toast"]);
 });
