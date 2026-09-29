@@ -1,3 +1,4 @@
+import { advanceOpening, isOpening } from "../opening";
 import { getCharacter } from "../characters";
 import { getVenue } from "../venues";
 import { actorAt, participantState } from "../simulation";
@@ -10,12 +11,13 @@ export async function advanceTurn(request: TurnRequest, dependencies: {
 }): Promise<TurnResponse> {
   const { state } = request;
   if (state.turn >= MAX_TURNS) throw new Error("飲み会は終了しています");
+  if (isOpening(state)) return advanceOpening(state);
   const character = getCharacter(actorAt(state.config, state.turn));
   const venue = getVenue(state.config.venueId);
   const before = participantState(state, character.id);
   const context = { state: before, character, venue };
   const action = selectAction(context, dependencies.random);
-  const item = action === "drink" || action === "eat" ? selectMenuItem(venue, action, dependencies.random) : undefined;
+  const item = action === "drink" || action === "eat" ? selectMenuItem(context, action, dependencies.random) : undefined;
   const { nextState, delta } = applyAction(before, action, character, item);
   const turn = state.turn + 1;
   const eventBase = { type: "action" as const, turn, characterId: character.id, delta, reason: actionReason(context, action, item) };

@@ -1,3 +1,4 @@
+import { advanceOpening } from "./opening";
 import { useEffect, useRef, useState } from "react";
 import { appendTurnResult, createInitialState, defaultConfig, latestEvents, recentSpeeches } from "./simulation";
 import { MAX_TURNS } from "./types";
@@ -8,6 +9,7 @@ export function useNomikai() {
   // 全イベントを唯一の履歴とし、最新表示・AI文脈をそこから導出する。
   const [result, setResult] = useState<TurnResponse | null>(null);
   const [config, setConfig] = useState<SimulationConfig>(defaultConfig);
+  const [runId, setRunId] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const inFlight = useRef<AbortController | null>(null);
@@ -17,7 +19,8 @@ export function useNomikai() {
     if (inFlight.current) return;
     const state = createInitialState(selected);
     setConfig(state.config);
-    setResult({ state, events: [] });
+    setRunId((id) => id + 1);
+    setResult(advanceOpening(state));
     setError("");
   }
   function configure() {
@@ -61,6 +64,6 @@ export function useNomikai() {
       setLoading(false);
     }
   }
-  return { result, config, loading, error, start, configure, nextTurn,
+  return { result, runId, config, loading, error, start, configure, nextTurn,
     turnEvents: result ? latestEvents(result) : [], finished: result !== null && result.state.turn >= MAX_TURNS };
 }
