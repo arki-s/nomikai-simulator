@@ -1,5 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
 <!-- 既存の柔らかい絵柄に合わせ、ノンアル方針とは独立した人物の見た目を用意する。 -->
+<!-- 他の人物と同じ角丸背景を加え、舞台上でも輪郭と人物色を見分けやすくする。 -->
+<rect width="160" height="160" rx="42" fill="#d994aa"/>
 <ellipse cx="80" cy="148" rx="48" ry="7" fill="#452c24" opacity=".15"/>
 <path d="M34 150q-1-48 46-48t46 48" fill="#99d7c1" stroke="#614238" stroke-width="3"/>
 <path d="M38 107Q19 28 80 20q61 6 44 87Z" fill="#80513c" stroke="#614238" stroke-width="3"/>
