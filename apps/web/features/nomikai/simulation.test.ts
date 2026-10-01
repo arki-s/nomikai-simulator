@@ -29,7 +29,7 @@ test("累積ログは発言以外も残し、最新表示と直近6発言を導�
   const { runningState } = await import("./test-fixtures");
   let session = { state: runningState(), events: [] } as import("./types").TurnResponse;
   for (let turn = 0; turn < 10; turn++) {
-    const next = await advanceTurn({ state: session.state, recentSpeeches: recentSpeeches(session.events) }, { random: () => turn === 9 ? 0 : 0.8, generateDialogue: async () => ({ text: "話しました" }) });
+    const next = await advanceTurn({ state: session.state, recentSpeeches: recentSpeeches(session.events) }, { random: () => turn === 9 ? 0 : 0.999, generateDialogue: async () => ({ text: "話しました" }) });
     const count = session.events.length;
     const previous = session;
     session = appendTurnResult(session, next);

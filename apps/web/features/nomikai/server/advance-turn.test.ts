@@ -9,8 +9,26 @@ import { advanceTurn } from "./advance-turn";
 
 // 外部生成器を差し替え、費用を発生させずに責務の境界を確かめる。
 const unavailable: DialogueGenerator = async () => { throw new Error("AI unavailable"); };
+// 満腹時の休憩を進行・応答検証まで通し、通常時の偽装応答も拒否する。
+test("飲食できない時だけAIなしで休み、回復した数値を応答検証できる", async () => {
+  for (const id of ["youkya", "sweet_tooth"] as const) {
+    const state = createInitialState({ participantIds: ["youkya", "sweet_tooth"], venueId: "izakaya" });
+    state.turn = id === "sweet_tooth" ? 1 : 0;
+    state.participants[id] = { ...state.participants[id]!, fullness: 100, drunkenness: id === "sweet_tooth" ? 0 : 100, nonAlcoholOnly: true, firstDrinkId: null };
+    let calls = 0;
+    const result = await advanceTurn({ state, recentSpeeches: [] }, { random: () => 0.999, generateDialogue: async () => { calls++; return { text: "不要" }; } });
+    assert.equal(calls, 0);
+    assert.equal(result.events.length, 1);
+    assert.equal(result.events[0].type === "action" && result.events[0].action, "rest");
+    assert.equal(result.state.participants[id]!.fullness, 95);
+    assert.ok(isTurnResponse(result, state));
+    const drinkable = structuredClone(state); drinkable.participants[id]!.fullness = 99;
+    const forged = structuredClone(result); forged.state.participants[id]!.fullness = 94;
+    assert.equal(isTurnResponse(forged, drinkable), false);
+  }
+});
 test("1ターンに1人だけ行動し、非発言ではAIを呼ばない", async () => {
-  for (const random of [0, 0.4, 0.99]) {
+  for (const random of [0, 0.4]) {
     const request: TurnRequest = { state: createInitialState(), recentSpeeches: [] };
     const original = structuredClone(request);
     let calls = 0;

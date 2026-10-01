@@ -11,6 +11,7 @@ test("3店舗のID・メニュー・効果と4人の特性が有効", () => {
     assert.equal(new Set(venue.menu.map((item) => item.id)).size, venue.menu.length);
     for (const kind of ["drink", "eat"]) assert.ok(venue.menu.filter((item) => item.kind === kind).length >= 2);
     for (const item of venue.menu) {
+      if (item.kind === "drink") assert.equal(item.fullness, 10);
       const effect = item.kind === "drink" ? item.drunkenness : item.fullness;
       if (item.kind === "drink" && !item.alcoholic) assert.equal(effect, 0);
       assert.ok(Number.isInteger(effect) && effect >= 0 && effect <= 100);

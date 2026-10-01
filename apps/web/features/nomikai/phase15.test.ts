@@ -82,7 +82,7 @@ test("酔い60でノンアルへ切り替え、休んでも戻らず、ノンア
     assert.ok(candidates.every((item) => item.kind === "drink" && item.alcoholic === !state.nonAlcoholOnly));
   }
   const juice = venue.menu.find((item) => item.id === "juice")!;
-  assert.deepEqual(applyAction(rested, "drink", character, juice).delta, { drunkenness: 0, fullness: 0 });
+  assert.deepEqual(applyAction(rested, "drink", character, juice).delta, { drunkenness: 0, fullness: 10 });
   assert.throws(() => applyAction(rested, "drink", character, beer), /ノンアル/);
   assert.throws(() => applyAction(person(), "drink", getCharacter("sweet_tooth"), beer), /ノンアル/);
 });
