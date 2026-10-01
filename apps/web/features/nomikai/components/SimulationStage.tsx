@@ -1,9 +1,11 @@
+import Image from "next/image";
 import { EmptyVessels } from "./EmptyVessels";
+import { ParticipantStatus } from "./ParticipantStatus";
 import { participantState } from "../simulation";
 import { openingLength } from "../opening";
-import Image from "next/image";
 import { getCharacter } from "../characters";
 import { getVenue } from "../venues";
+import { ACTION_LABELS } from "../rules";
 import type { SimulationEvent, SimulationState } from "../types";
 
 export function SimulationStage({ state, events, history }: { state: SimulationState; events: SimulationEvent[]; history: SimulationEvent[] }) {
@@ -12,35 +14,32 @@ export function SimulationStage({ state, events, history }: { state: SimulationS
   const speech = events.find((event) => event.type === "speech");
   const opening = events.find((event) => event.type === "opening");
   const speakers = opening?.speakerIds ?? (speech ? [speech.characterId] : []);
-  const text = opening?.text ?? speech?.text;
-  // 最新ターンだけで舞台を作り、前ターンの発言者を現在の話者として残さない。
-  return (
-    <section aria-label="飲み会の舞台" className="space-y-5">
-      {/* 背景の基準領域から発言枠を分離し、発言の有無や長さで画像が拡大・縮小するのを防ぐ。 */}
-      <div className="relative overflow-hidden rounded-2xl bg-stone-800 p-4 sm:p-8">
-        {/* 店舗の主画像は表示時にすぐ読み込み、背景の表示待ちを避ける。 */}
-        <Image loading="eager" src={venue.backgroundSrc} alt="" fill className="object-cover" sizes="(max-width: 1024px) 100vw, 960px" />
-        <div className="relative mb-5 inline-block rounded-lg bg-stone-950/85 px-3 py-2 text-sm text-white">{venue.atmosphere}</div>
-        <div className={`relative grid items-end gap-3 ${state.config.participantIds.length === 4 ? "grid-cols-2 sm:grid-cols-4" : state.config.participantIds.length === 2 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3"}`}>
-          {state.config.participantIds.map((id) => {
-            const character = getCharacter(id);
-            const speaking = speakers.includes(id);
-            const first = participantState(state, id).firstDrinkId;
-            const served = state.openingStep >= openingLength(state) - 1;
-            return (
-              <div key={id} className={`flex min-w-0 flex-col items-center rounded-xl border-2 p-2 text-center sm:p-4 ${action?.characterId === id || speaking ? "border-amber-300 bg-stone-950/85" : "border-transparent bg-stone-950/70"}`}>
-                <Image src={character.avatarSrc} alt="" width={110} height={110} className="h-auto w-full max-w-20 sm:max-w-28" />
-                <p className="mt-2 text-xs font-bold text-white sm:text-base">{character.name}</p>
-                <p className="mt-1 h-10 text-xs text-amber-200">{speaking ? opening?.stage === "toast" ? "全員で乾杯！" : "このステップの話者" : action?.characterId === id ? "このターンの行動者" : "待機中"}</p>
-                {/* 注文・器の表示は固定の枠内に置き、背景の大きさを進行中に変えない。 */}
-                <p className="h-10 text-xs text-stone-200">{first ? `${served ? "届いた一杯" : "注文済み"}：${venue.menu.find((item) => item.id === first)?.name}` : ""}</p>
-                <EmptyVessels events={history} venueId={venue.id} characterId={id} />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      {text && <div className="rounded-2xl border border-stone-200 border-l-4 border-l-amber-500 bg-white p-5 text-stone-900"><p className="mb-2 text-sm font-bold">{speakers.length > 1 ? "全員の発言" : speakers.length === 1 ? `${getCharacter(speakers[0]).name}の発言` : "飲み会のようす"}</p><p className="whitespace-pre-wrap break-words leading-7">{text}</p></div>}
-    </section>
-  );
+  return <section aria-label="飲み会の舞台" className="relative overflow-hidden rounded-2xl bg-stone-800 p-3 sm:p-4">
+    {/* 発言は背景の外の固定枠へ移し、舞台には全員の行動・状態をまとめる。 */}
+    <Image loading="eager" src={venue.backgroundSrc} alt="" fill className="object-cover" sizes="(max-width: 1280px) 100vw, 1200px" />
+    <p className="relative mb-3 inline-block rounded-lg bg-stone-950/85 px-3 py-1 text-xs text-white">{venue.atmosphere}</p>
+    <div className={`relative grid items-stretch gap-2 ${state.config.participantIds.length === 4 ? "grid-cols-2 lg:grid-cols-4" : state.config.participantIds.length === 3 ? "grid-cols-2 lg:grid-cols-3" : "grid-cols-2"}`}>
+      {state.config.participantIds.map((id) => {
+        const character = getCharacter(id);
+        const person = participantState(state, id);
+        const speaking = speakers.includes(id);
+        // 直近行動は累積ログから導出し、今回の行動者と混同させない。
+        const previous = history.findLast((event) => event.type === "action" && event.characterId === id);
+        const last = previous?.type === "action" ? previous : undefined;
+        const item = last && venue.menu.find((item) => item.id === last.menuItemId);
+        const first = venue.menu.find((item) => item.id === person.firstDrinkId);
+        const active = action?.characterId === id || speaking;
+        return <article key={id} aria-label={character.name} className={`min-w-0 space-y-2 rounded-xl border-2 bg-stone-950/85 p-3 text-white ${active ? "border-amber-300" : "border-transparent"}`}>
+          <div className="flex h-20 lg:h-16 items-center gap-2">
+            <Image src={character.avatarSrc} alt="" width={64} height={64} className="h-auto w-12 shrink-0 sm:w-16" />
+            <div className="min-w-0"><h2 className="text-sm font-bold">{character.name}</h2><p className="mt-1 text-xs text-amber-200">{speaking ? opening?.stage === "toast" ? "全員で乾杯！" : "今回の話者" : action?.characterId === id ? "今回の行動者" : "待機中"}</p></div>
+          </div>
+          <p className="h-10 lg:h-8 text-xs leading-5">{last ? <><span className="text-stone-300">直近 T{last.turn}：</span>{ACTION_LABELS[last.action]}{item ? `（${item.name}）` : ""}</> : "通常の行動はまだありません"}</p>
+          <p className="h-10 lg:h-8 text-xs leading-5 text-amber-100">{first ? `${state.openingStep >= openingLength(state) - 1 ? "届いた一杯" : "注文済み"}：${first.name}` : person.nonAlcoholOnly ? "ノンアルのみ" : ""}</p>
+          <ParticipantStatus name={character.name} state={person} />
+          <EmptyVessels events={history} venueId={venue.id} characterId={id} />
+        </article>;
+      })}
+    </div>
+  </section>;
 }

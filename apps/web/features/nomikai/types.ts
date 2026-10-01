@@ -22,9 +22,9 @@ export type Character = {
   actionBias: ActionBias;
   traitLabel: string;
 };
-// 飲み物と料理で効果の項目を分け、種類の取り違えを型でも防ぐ。
+// 飲料にも満腹効果を持たせつつ、酔いは飲料だけに限定して種類の取り違えを防ぐ。
 export type MenuItem = { id: string; name: string } & (
-  | { kind: "drink"; drunkenness: number; alcoholic: boolean; vessel: "mug" | "glass" }
+  | { kind: "drink"; fullness: number; drunkenness: number; alcoholic: boolean; vessel: "mug" | "glass" }
   | { kind: "eat"; fullness: number; category: "food" | "dessert"; vessel: "plate" }
 );
 export type Venue = {

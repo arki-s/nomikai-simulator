@@ -37,13 +37,13 @@ export function NomikaiSetup({ initialConfig, onStart }: { initialConfig: Simula
           {VENUES.map((venue) => (
             <label key={venue.id} className={`overflow-hidden rounded-2xl border-2 cursor-pointer ${config.venueId === venue.id ? "border-amber-600 bg-amber-50 dark:bg-amber-950/30" : "border-stone-300 dark:border-stone-700"}`}>
               {/* 店舗の主画像は表示時にすぐ読み込み、背景の表示待ちを避ける。 */}
-        <Image loading="eager" src={venue.backgroundSrc} alt="" width={800} height={320} className="h-28 w-full object-cover" />
+              <Image loading="eager" src={venue.backgroundSrc} alt="" width={800} height={320} className="h-28 w-full object-cover" />
               <div className="p-4">
                 <div className="flex items-center gap-2"><input type="radio" name="venue" value={venue.id} checked={config.venueId === venue.id} onChange={() => setConfig((previous) => ({ ...previous, venueId: venue.id }))} aria-label={venue.name} className="size-4 accent-amber-700" /><span className="font-bold">{venue.name}</span></div>
                 <p className="my-2 text-sm leading-6">{venue.atmosphere}</p>
                 <p className="text-xs font-bold text-amber-800 dark:text-amber-300">{venue.ruleLabel}</p>
                 <ul className="mt-3 space-y-1 text-xs leading-5 text-stone-600 dark:text-stone-300">
-                  {venue.menu.map((item) => <li key={item.id}>{item.name} · {item.kind === "drink" ? item.alcoholic ? `酔い +${item.drunkenness} × 人物倍率` : "ノンアル・酔い変化なし" : `満腹 +${item.fullness}`}</li>)}
+                  {venue.menu.map((item) => <li key={item.id}>{item.name} · {item.kind === "drink" ? item.alcoholic ? `酔い +${item.drunkenness} × 人物倍率・満腹 +${item.fullness}` : `ノンアル・満腹 +${item.fullness}` : `満腹 +${item.fullness}`}</li>)}
                 </ul>
               </div>
             </label>

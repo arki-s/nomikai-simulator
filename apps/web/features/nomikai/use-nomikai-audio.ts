@@ -22,11 +22,12 @@ export function useNomikaiAudio(result: TurnResponse | null, runId: number) {
   useEffect(() => {
     // 最新の確定行動だけを渡す。会話イベントや過去ログを再生の起点にしない。
     const event = result?.events.findLast((item) => item.type !== "speech");
-    controller.current?.update({ active: result !== null && result.state.turn < MAX_TURNS, runId,
+    controller.current?.update({ phase: result === null ? "idle" : result.state.turn < MAX_TURNS ? "running" : "finished", runId,
       bgmSrc: result ? getVenue(result.state.config.venueId).bgmSrc : "", event });
   }, [result, runId]);
   function toggleBgm() { const on = !bgmOn; setBgmOn(on); setAudioError(""); controller.current?.enableBgm(on); }
   function toggleSe() { const on = !seOn; setSeOn(on); setAudioError(""); controller.current?.enableSe(on); }
   return { bgmRef, seRef, bgmOn, seOn, audioError, toggleBgm, toggleSe,
+    bgmEnded: () => controller.current?.ended(),
     mediaFailed: (kind: "bgm" | "se") => controller.current?.failed(kind) };
 }

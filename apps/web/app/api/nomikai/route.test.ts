@@ -31,7 +31,8 @@ test("POSTから状態更新とAI未設定時の定型文を取得できる", as
   const result = await first.json();
   assert.equal(result.state.turn, 1);
   assert.equal(result.state.participants.youkya.drunkenness, 10);
-  random.mock.mockImplementation(() => 0.8);
+  assert.equal(result.state.participants.youkya.fullness, 10);
+  random.mock.mockImplementation(() => 0.999);
   const second = await POST(request(JSON.stringify({ state: result.state, recentSpeeches: [] })));
   assert.equal(second.status, 200);
   const next = await second.json();
@@ -54,7 +55,7 @@ test("2人開催と店舗メニューを受け付け、不正設定は400、AI�
   }
   // 上限時はキーの有無によらず外部通信してはならない。
   const fetchMock = t.mock.method(globalThis, "fetch", async () => { throw new Error("外部通信禁止"); });
-  random.mock.mockImplementation(() => 0.8);
+  random.mock.mockImplementation(() => 0.999);
   state.turn = 8; state.aiAttempts = 8;
   const capped = await POST(request(JSON.stringify({ state, recentSpeeches: [] })));
   assert.equal(capped.status, 200);
